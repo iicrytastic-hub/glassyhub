@@ -16,15 +16,28 @@ local RunService = game:GetService("RunService")
 local Library = {}
 
 local Theme = {
-    Accent = Color3.fromRGB(125, 165, 255),
-    Text = Color3.fromRGB(240, 243, 252),
-    SubText = Color3.fromRGB(165, 172, 195),
-    Glass = Color3.fromRGB(18, 20, 30),
+    Accent = Color3.fromRGB(255, 70, 130),
+    Text = Color3.fromRGB(246, 238, 242),
+    SubText = Color3.fromRGB(190, 160, 172),
+    Glass = Color3.fromRGB(16, 8, 12),
     Font = Enum.Font.GothamMedium,
     FontBold = Enum.Font.GothamBold,
 }
 
 -- helpers ------------------------------------------------------------------
+
+-- every global input connection goes through here so Destroy can clean them all up
+local AllConnections = {}
+local function on(signal, fn)
+    local c = signal:Connect(fn)
+    table.insert(AllConnections, c)
+    return c
+end
+
+local KEY_LABELS = { RightBracket = "]", LeftBracket = "[", Backquote = "`", Semicolon = ";", Quote = "'" }
+local function keyLabel(key)
+    return KEY_LABELS[key.Name] or key.Name
+end
 
 local function create(class, props, children)
     local inst = Instance.new(class)
@@ -88,7 +101,7 @@ local function makeDraggable(handle, target)
             end)
         end
     end)
-    UIS.InputChanged:Connect(function(input)
+    on(UIS.InputChanged, function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local d = input.Position - dragStart
             target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
@@ -110,10 +123,18 @@ Tab.__index = Tab
 
 function Library:CreateWindow(opts)
     opts = opts or {}
+    -- re-running the script replaces the old window instead of stacking a second one
+    local env = (getgenv and getgenv()) or _G
+    if env.__GlassUIWindow then
+        pcall(function() env.__GlassUIWindow:Destroy() end)
+    end
+
     local self = setmetatable({}, Window)
+    env.__GlassUIWindow = self
     self.Tabs = {}
-    self.ToggleKey = opts.ToggleKey or Enum.KeyCode.RightShift
+    self.ToggleKey = opts.ToggleKey or Enum.KeyCode.RightBracket
     self.Connections = {}
+    self._hooks = {}
 
     self.Gui = create("ScreenGui", {
         Name = "GlassUI_" .. tostring(math.random(1000, 9999)),
@@ -142,7 +163,7 @@ function Library:CreateWindow(opts)
             NumberSequenceKeypoint.new(0, 0),
             NumberSequenceKeypoint.new(1, 0.25),
         }),
-        Color = ColorSequence.new(Color3.fromRGB(70, 80, 120), Color3.fromRGB(255, 255, 255)),
+        Color = ColorSequence.new(Color3.fromRGB(255, 140, 190), Color3.fromRGB(60, 50, 55)),
     })
     local strokeGrad = create("UIGradient", { Rotation = 0 })
 
@@ -150,13 +171,99 @@ function Library:CreateWindow(opts)
         Name = "Main",
         Size = opts.Size or UDim2.fromOffset(540, 380),
         Position = UDim2.new(0.5, -270, 0.5, -190),
-        BackgroundColor3 = Theme.Glass,
+        BackgroundColor3 = Color3.fromRGB(70, 22, 40),
         BackgroundTransparency = 0.28,
         BorderSizePixel = 0,
         Parent = self.Gui,
     }, { corner(14), mainStroke, glassGrad })
     strokeGrad.Parent = mainStroke
     self.Main = main
+
+    -- background watermark: a "L :( V E" wordmark by default,
+    -- or your own image via opts.Logo (asset id) / opts.LogoUrl (raw PNG link)
+    local mark = create("Frame", {
+        Name = "Watermark",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.6, 0),
+        Size = UDim2.fromOffset(340, 130),
+        BackgroundTransparency = 1,
+        ZIndex = 0,
+        Parent = main,
+    }, {
+        create("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Padding = UDim.new(0, 10),
+        }),
+    })
+    local function wordLetter(txt)
+        create("TextLabel", {
+            Size = UDim2.fromOffset(68, 110),
+            BackgroundTransparency = 1,
+            Text = txt,
+            TextColor3 = Theme.Accent,
+            TextTransparency = 0.88,
+            Font = Enum.Font.GothamBlack,
+            TextSize = 96,
+            ZIndex = 0,
+            Parent = mark,
+        })
+    end
+    wordLetter("L")
+    -- the "O" is a sideways frown
+    local frownSlot = create("Frame", {
+        Size = UDim2.fromOffset(84, 110), BackgroundTransparency = 1, ZIndex = 0, Parent = mark,
+    })
+    create("TextLabel", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.fromOffset(84, 84),
+        BackgroundTransparency = 1,
+        Text = ":(",
+        TextColor3 = Theme.Accent,
+        TextTransparency = 0.88,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 84,
+        Rotation = 90,
+        ZIndex = 0,
+        Parent = frownSlot,
+    })
+    wordLetter("V")
+    wordLetter("E")
+
+    local logoImg = create("ImageLabel", {
+        Name = "Logo",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.6, 0),
+        Size = UDim2.fromOffset(230, 230),
+        BackgroundTransparency = 1,
+        ImageTransparency = opts.LogoTransparency or 0.85,
+        ScaleType = Enum.ScaleType.Fit,
+        ZIndex = 0,
+        Visible = false,
+        Parent = main,
+    })
+    local function useImage(id)
+        logoImg.Image = id
+        logoImg.Visible = true
+        mark.Visible = false
+    end
+    if opts.Logo then
+        useImage(opts.Logo)
+    elseif opts.LogoUrl then
+        task.spawn(function()
+            local ok, err = pcall(function()
+                local data = game:HttpGet(opts.LogoUrl)
+                writefile("GlassUI_logo.png", data)
+                local getAsset = getcustomasset or getsynasset
+                useImage(getAsset("GlassUI_logo.png"))
+            end)
+            if not ok then
+                warn("[GlassUI] could not load logo image, keeping the wordmark: " .. tostring(err))
+            end
+        end)
+    end
 
     -- top bar
     local topbar = create("Frame", {
@@ -260,10 +367,10 @@ function Library:CreateWindow(opts)
 
     hideBtn.MouseButton1Click:Connect(function()
         self:SetVisible(false)
-        self:Notify({ Title = "Hidden", Text = "Press " .. self.ToggleKey.Name .. " or click the pill at the top." })
+        self:Notify({ Title = "Hidden", Text = "Press " .. keyLabel(self.ToggleKey) .. " or click the pill at the top." })
     end)
 
-    table.insert(self.Connections, UIS.InputBegan:Connect(function(input)
+    table.insert(self.Connections, on(UIS.InputBegan, function(input)
         if input.KeyCode == self.ToggleKey and not UIS:GetFocusedTextBox() then
             self:SetVisible(not self.Visible)
         end
@@ -274,6 +381,9 @@ function Library:CreateWindow(opts)
     self.RGBSpeed = opts.RGBSpeed or 0.05        -- hue cycles per second (also sets the circling speed)
     self.RGBSpread = opts.RGBSpread or 0.6       -- how much of the colour wheel shows at once
     self.RGBSaturation = opts.RGBSaturation or 0.7
+    self.Palette = opts.Palette or "theme"       -- "theme" (red/pink) or "rainbow"
+    local RED = Color3.fromRGB(235, 25, 60)
+    local PINK = Color3.fromRGB(255, 105, 180)
 
     local function applyStatic()
         strokeGrad.Color = ColorSequence.new(Color3.new(1, 1, 1))
@@ -295,8 +405,16 @@ function Library:CreateWindow(opts)
         local base = t * self.RGBSpeed
         local keys = {}
         for i = 0, STOPS do
-            local h = (base + (i / STOPS) * self.RGBSpread) % 1
-            keys[i + 1] = ColorSequenceKeypoint.new(i / STOPS, Color3.fromHSV(h, self.RGBSaturation, 1))
+            local color
+            if self.Palette == "rainbow" then
+                local h = (base + (i / STOPS) * self.RGBSpread) % 1
+                color = Color3.fromHSV(h, self.RGBSaturation, 1)
+            else
+                -- one smooth wave of red <-> pink around the edge; ends match so it loops seamlessly
+                local w = 0.5 + 0.5 * math.sin(2 * math.pi * (t * self.RGBSpeed * 4 + i / STOPS))
+                color = RED:Lerp(PINK, w)
+            end
+            keys[i + 1] = ColorSequenceKeypoint.new(i / STOPS, color)
         end
         strokeGrad.Color = ColorSequence.new(keys)
         strokeGrad.Rotation = (t * self.RGBSpeed * 600) % 360
@@ -366,10 +484,22 @@ function Window:Notify(o)
     end)
 end
 
+-- register cleanup that should run when the window is destroyed (turn features off, etc.)
+function Window:OnDestroy(fn)
+    table.insert(self._hooks, fn)
+end
+
 function Window:Destroy()
-    for _, c in ipairs(self.Connections) do c:Disconnect() end
+    if self.Destroyed then return end
+    self.Destroyed = true
+    for _, fn in ipairs(self._hooks) do pcall(fn) end
+    for _, c in ipairs(self.Connections) do pcall(function() c:Disconnect() end) end
+    for _, c in ipairs(AllConnections) do pcall(function() c:Disconnect() end) end
+    table.clear(AllConnections)
     if self.Blur then self.Blur:Destroy() end
-    self.Gui:Destroy()
+    if self.Gui then self.Gui:Destroy() end
+    local env = (getgenv and getgenv()) or _G
+    if env.__GlassUIWindow == self then env.__GlassUIWindow = nil end
 end
 
 -- tabs ---------------------------------------------------------------------
@@ -572,7 +702,7 @@ function Tab:Slider(o)
     }, {
         corner(4),
         create("UIGradient", {
-            Color = ColorSequence.new(Color3.fromRGB(95, 130, 235), Color3.fromRGB(170, 200, 255)),
+            Color = ColorSequence.new(Color3.fromRGB(225, 25, 65), Color3.fromRGB(255, 115, 185)),
         }),
     })
     local glow = create("Frame", {
@@ -640,7 +770,7 @@ function Tab:Slider(o)
             fromX(input.Position.X)
         end
     end)
-    UIS.InputEnded:Connect(function(input)
+    on(UIS.InputEnded, function(input)
         if dragging and isPress(input) then
             dragging = false
             goal = pctOf(value) -- settle onto the snapped value
@@ -648,7 +778,7 @@ function Tab:Slider(o)
             look()
         end
     end)
-    UIS.InputChanged:Connect(function(input)
+    on(UIS.InputChanged, function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             fromX(input.Position.X)
         end
@@ -737,7 +867,7 @@ function Tab:Keybind(o)
         tween(kb, { BackgroundColor3 = Theme.Accent, BackgroundTransparency = 0.5 })
     end)
 
-    UIS.InputBegan:Connect(function(input, processed)
+    on(UIS.InputBegan, function(input, processed)
         if listening and input.UserInputType == Enum.UserInputType.Keyboard then
             listening = false
             key = input.KeyCode == Enum.KeyCode.Escape and Enum.KeyCode.Unknown or input.KeyCode
