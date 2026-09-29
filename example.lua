@@ -1,4 +1,4 @@
--- Host GlassUI.lua at a raw URL and paste it below
+-- Peep Hub
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/iicrytastic-hub/glassyhub/main/GlassUI.lua"))()
 
 local Players = game:GetService("Players")
@@ -7,9 +7,14 @@ local UIS = game:GetService("UserInputService")
 local lp = Players.LocalPlayer
 
 local Window = Library:CreateWindow({
-    Title = "Testing Grounds",
-    ToggleKey = Enum.KeyCode.RightShift,
+    Title = "Peep Hub",
+    ToggleKey = Enum.KeyCode.RightBracket, -- the ] key
     Blur = true,
+
+    -- Optional: use your own image as the background watermark instead of the
+    -- built-in "L :( V E" wordmark. Use ONE of these:
+    -- Logo = "rbxassetid://YOUR_IMAGE_ID",
+    -- LogoUrl = "https://raw.githubusercontent.com/iicrytastic-hub/glassyhub/main/logo.png",
 })
 
 local function getHumanoid()
@@ -21,12 +26,11 @@ local Tab = Window:Tab("Movement")
 
 -- WalkSpeed ---------------------------------------------------------------
 Tab:Section("Speed")
-local speed, speedOn, speedConn = 16, false, nil
+local speed, speedConn = 16, nil
 
 Tab:Toggle({
     Name = "Custom WalkSpeed",
     Callback = function(on)
-        speedOn = on
         if speedConn then speedConn:Disconnect(); speedConn = nil end
         if on then
             -- re-applied every frame so respawns and game resets don't undo it
@@ -82,25 +86,30 @@ Tab:Toggle({
     end,
 })
 
+-- Everything above gets switched off when the UI is destroyed --------------
+Window:OnDestroy(function()
+    if speedConn then speedConn:Disconnect() end
+    if noclipConn then noclipConn:Disconnect() end
+    if jumpConn then jumpConn:Disconnect() end
+    local h = getHumanoid()
+    if h then h.WalkSpeed = 16 end
+end)
+
 -- Settings ------------------------------------------------------------------
 local Settings = Window:Tab("Settings")
+
 Settings:Section("Outline")
 Settings:Toggle({
-    Name = "Flowing RGB outline", Default = true,
+    Name = "Flowing outline", Default = true,
     Callback = function(on) Window:SetRGB(on) end,
 })
 Settings:Slider({
     Name = "Flow speed", Min = 1, Max = 20, Default = 5,
     Callback = function(v) Window.RGBSpeed = v / 100 end,
 })
+
+Settings:Section("Menu")
 Settings:Button({
-    Name = "Unload",
-    Callback = function()
-        if speedConn then speedConn:Disconnect() end
-        if noclipConn then noclipConn:Disconnect() end
-        if jumpConn then jumpConn:Disconnect() end
-        local h = getHumanoid()
-        if h then h.WalkSpeed = 16 end
-        Window:Destroy()
-    end,
+    Name = "Destroy UI",
+    Callback = function() Window:Destroy() end,
 })
