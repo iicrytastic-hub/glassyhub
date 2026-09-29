@@ -84,9 +84,9 @@ Tab:Toggle({
 
 -- Settings ------------------------------------------------------------------
 local Settings = Window:Tab("Settings")
-Settings:Section("Glass")
+Settings:Section("Outline")
 Settings:Toggle({
-    Name = "Flowing RGB glass", Default = true,
+    Name = "Flowing RGB outline", Default = true,
     Callback = function(on) Window:SetRGB(on) end,
 })
 Settings:Slider({
