@@ -133,26 +133,27 @@ function Library:CreateWindow(opts)
         warn("[GlassUI] could not parent the window anywhere")
     end
 
+    -- glass panel: white base so the animated gradient supplies the colour
+    local mainStroke = stroke(0.55)
+    local glassGrad = create("UIGradient", {
+        Rotation = 35,
+        Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0),
+            NumberSequenceKeypoint.new(1, 0.25),
+        }),
+    })
+    local strokeGrad = create("UIGradient", { Rotation = 35 })
+
     local main = create("Frame", {
         Name = "Main",
         Size = opts.Size or UDim2.fromOffset(540, 380),
         Position = UDim2.new(0.5, -270, 0.5, -190),
-        BackgroundColor3 = Theme.Glass,
+        BackgroundColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 0.28,
         BorderSizePixel = 0,
         Parent = self.Gui,
-    }, {
-        corner(14),
-        stroke(0.75),
-        create("UIGradient", {
-            Rotation = 90,
-            Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0),
-                NumberSequenceKeypoint.new(1, 0.25),
-            }),
-            Color = ColorSequence.new(Color3.fromRGB(70, 80, 120), Color3.fromRGB(255, 255, 255)),
-        }),
-    })
+    }, { corner(14), mainStroke, glassGrad })
+    strokeGrad.Parent = mainStroke
     self.Main = main
 
     -- top bar
@@ -231,22 +232,79 @@ function Library:CreateWindow(opts)
     self.Visible = true
     if self.Blur then tween(self.Blur, { Size = 10 }, 0.3) end
 
+    -- small pill shown while hidden, so the menu can always be reopened
+    local pill = create("TextButton", {
+        Size = UDim2.fromOffset(110, 26),
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.new(0.5, 0, 0, 10),
+        BackgroundColor3 = Theme.Glass,
+        BackgroundTransparency = 0.3,
+        Text = (opts.Title or "GlassUI") .. "  \u{25BE}",
+        TextColor3 = Theme.Text,
+        Font = Theme.Font,
+        TextSize = 12,
+        AutoButtonColor = false,
+        Visible = false,
+        Parent = self.Gui,
+    }, { corner(13), stroke(0.7) })
+    pill.MouseButton1Click:Connect(function() self:SetVisible(true) end)
+
     function self:SetVisible(v)
         self.Visible = v
         main.Visible = v
+        pill.Visible = not v
         if self.Blur then tween(self.Blur, { Size = v and 10 or 0 }, 0.25) end
     end
 
     hideBtn.MouseButton1Click:Connect(function()
         self:SetVisible(false)
-        self:Notify({ Title = "Hidden", Text = "Press " .. self.ToggleKey.Name .. " to reopen." })
+        self:Notify({ Title = "Hidden", Text = "Press " .. self.ToggleKey.Name .. " or click the pill at the top." })
     end)
 
-    table.insert(self.Connections, UIS.InputBegan:Connect(function(input, processed)
-        if not processed and input.KeyCode == self.ToggleKey then
+    table.insert(self.Connections, UIS.InputBegan:Connect(function(input)
+        if input.KeyCode == self.ToggleKey and not UIS:GetFocusedTextBox() then
             self:SetVisible(not self.Visible)
         end
     end))
+
+    -- flowing glass tint: hues drift continuously and the gradient sways slowly
+    self.RGB = opts.RGB ~= false
+    self.RGBSpeed = opts.RGBSpeed or 0.05          -- hue cycles per second
+    self.RGBSpread = opts.RGBSpread or 0.6         -- how much of the colour wheel shows at once
+    self.RGBSaturation = opts.RGBSaturation or 0.65
+    self.RGBBrightness = opts.RGBBrightness or 0.5 -- lower = darker glass, easier to read
+
+    local staticGlass = ColorSequence.new(Color3.fromRGB(34, 38, 58), Color3.fromRGB(70, 78, 112))
+    local staticStroke = ColorSequence.new(Color3.new(1, 1, 1))
+    local function applyStatic()
+        glassGrad.Color = staticGlass
+        strokeGrad.Color = staticStroke
+    end
+    applyStatic()
+
+    local STOPS = 8
+    local startClock = os.clock()
+    table.insert(self.Connections, RunService.RenderStepped:Connect(function()
+        if not self.RGB or not main.Visible then return end
+        local t = os.clock() - startClock
+        local base = t * self.RGBSpeed
+        local glassKeys, strokeKeys = {}, {}
+        for i = 0, STOPS do
+            local h = (base + (i / STOPS) * self.RGBSpread) % 1
+            glassKeys[i + 1] = ColorSequenceKeypoint.new(i / STOPS, Color3.fromHSV(h, self.RGBSaturation, self.RGBBrightness))
+            strokeKeys[i + 1] = ColorSequenceKeypoint.new(i / STOPS, Color3.fromHSV(h, self.RGBSaturation * 0.7, 1))
+        end
+        glassGrad.Color = ColorSequence.new(glassKeys)
+        strokeGrad.Color = ColorSequence.new(strokeKeys)
+        local rot = 35 + 25 * math.sin(t * 0.4)
+        glassGrad.Rotation = rot
+        strokeGrad.Rotation = rot
+    end))
+
+    function self:SetRGB(on)
+        self.RGB = on
+        if not on then applyStatic() end
+    end
 
     -- toast holder (lives outside main so it stays visible when hidden)
     self.Toasts = create("Frame", {
@@ -684,7 +742,7 @@ function Tab:Keybind(o)
             key = input.KeyCode == Enum.KeyCode.Escape and Enum.KeyCode.Unknown or input.KeyCode
             kb.Text = key == Enum.KeyCode.Unknown and "None" or key.Name
             tween(kb, { BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.88 })
-        elseif not processed and key ~= Enum.KeyCode.Unknown and input.KeyCode == key then
+        elseif not UIS:GetFocusedTextBox() and key ~= Enum.KeyCode.Unknown and input.KeyCode == key then
             if o.Callback then task.spawn(o.Callback) end
         end
     end)
