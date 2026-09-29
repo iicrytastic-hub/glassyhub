@@ -84,6 +84,15 @@ Tab:Toggle({
 
 -- Settings ------------------------------------------------------------------
 local Settings = Window:Tab("Settings")
+Settings:Section("Glass")
+Settings:Toggle({
+    Name = "Flowing RGB glass", Default = true,
+    Callback = function(on) Window:SetRGB(on) end,
+})
+Settings:Slider({
+    Name = "Flow speed", Min = 1, Max = 20, Default = 5,
+    Callback = function(v) Window.RGBSpeed = v / 100 end,
+})
 Settings:Button({
     Name = "Unload",
     Callback = function()
