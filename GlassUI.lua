@@ -133,22 +133,24 @@ function Library:CreateWindow(opts)
         warn("[GlassUI] could not parent the window anywhere")
     end
 
-    -- glass panel: white base so the animated gradient supplies the colour
-    local mainStroke = stroke(0.55)
+    -- glass panel (static) + a separate animated outline
+    local mainStroke = stroke(0.1)
+    mainStroke.Thickness = 2
     local glassGrad = create("UIGradient", {
-        Rotation = 35,
+        Rotation = 90,
         Transparency = NumberSequence.new({
             NumberSequenceKeypoint.new(0, 0),
             NumberSequenceKeypoint.new(1, 0.25),
         }),
+        Color = ColorSequence.new(Color3.fromRGB(70, 80, 120), Color3.fromRGB(255, 255, 255)),
     })
-    local strokeGrad = create("UIGradient", { Rotation = 35 })
+    local strokeGrad = create("UIGradient", { Rotation = 0 })
 
     local main = create("Frame", {
         Name = "Main",
         Size = opts.Size or UDim2.fromOffset(540, 380),
         Position = UDim2.new(0.5, -270, 0.5, -190),
-        BackgroundColor3 = Color3.new(1, 1, 1),
+        BackgroundColor3 = Theme.Glass,
         BackgroundTransparency = 0.28,
         BorderSizePixel = 0,
         Parent = self.Gui,
@@ -267,20 +269,23 @@ function Library:CreateWindow(opts)
         end
     end))
 
-    -- flowing glass tint: hues drift continuously and the gradient sways slowly
+    -- flowing RGB outline: colours drift and circle the edge continuously
     self.RGB = opts.RGB ~= false
-    self.RGBSpeed = opts.RGBSpeed or 0.05          -- hue cycles per second
-    self.RGBSpread = opts.RGBSpread or 0.6         -- how much of the colour wheel shows at once
-    self.RGBSaturation = opts.RGBSaturation or 0.65
-    self.RGBBrightness = opts.RGBBrightness or 0.5 -- lower = darker glass, easier to read
+    self.RGBSpeed = opts.RGBSpeed or 0.05        -- hue cycles per second (also sets the circling speed)
+    self.RGBSpread = opts.RGBSpread or 0.6       -- how much of the colour wheel shows at once
+    self.RGBSaturation = opts.RGBSaturation or 0.7
 
-    local staticGlass = ColorSequence.new(Color3.fromRGB(34, 38, 58), Color3.fromRGB(70, 78, 112))
-    local staticStroke = ColorSequence.new(Color3.new(1, 1, 1))
     local function applyStatic()
-        glassGrad.Color = staticGlass
-        strokeGrad.Color = staticStroke
+        strokeGrad.Color = ColorSequence.new(Color3.new(1, 1, 1))
+        strokeGrad.Rotation = 0
+        mainStroke.Transparency = 0.75
+        mainStroke.Thickness = 1
     end
-    applyStatic()
+    local function applyRGB()
+        mainStroke.Transparency = 0.1
+        mainStroke.Thickness = 2
+    end
+    if self.RGB then applyRGB() else applyStatic() end
 
     local STOPS = 8
     local startClock = os.clock()
@@ -288,22 +293,18 @@ function Library:CreateWindow(opts)
         if not self.RGB or not main.Visible then return end
         local t = os.clock() - startClock
         local base = t * self.RGBSpeed
-        local glassKeys, strokeKeys = {}, {}
+        local keys = {}
         for i = 0, STOPS do
             local h = (base + (i / STOPS) * self.RGBSpread) % 1
-            glassKeys[i + 1] = ColorSequenceKeypoint.new(i / STOPS, Color3.fromHSV(h, self.RGBSaturation, self.RGBBrightness))
-            strokeKeys[i + 1] = ColorSequenceKeypoint.new(i / STOPS, Color3.fromHSV(h, self.RGBSaturation * 0.7, 1))
+            keys[i + 1] = ColorSequenceKeypoint.new(i / STOPS, Color3.fromHSV(h, self.RGBSaturation, 1))
         end
-        glassGrad.Color = ColorSequence.new(glassKeys)
-        strokeGrad.Color = ColorSequence.new(strokeKeys)
-        local rot = 35 + 25 * math.sin(t * 0.4)
-        glassGrad.Rotation = rot
-        strokeGrad.Rotation = rot
+        strokeGrad.Color = ColorSequence.new(keys)
+        strokeGrad.Rotation = (t * self.RGBSpeed * 600) % 360
     end))
 
     function self:SetRGB(on)
         self.RGB = on
-        if not on then applyStatic() end
+        if on then applyRGB() else applyStatic() end
     end
 
     -- toast holder (lives outside main so it stays visible when hidden)
