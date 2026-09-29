@@ -1,5 +1,5 @@
 -- Host GlassUI.lua at a raw URL and paste it below
-local Library = loadstring(game:HttpGet(https://raw.githubusercontent.com/iicrytastic-hub/glassyhub/main/GlassUI.lua))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/iicrytastic-hub/glassyhub/main/GlassUI.lua"))()
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
